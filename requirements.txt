@@ -1,0 +1,6 @@
+scipy==1.8.1
+pytest
+shap==0.2.0.1
+xgboost==1.2.1
+typeguard==2.10.0
+bayesian-optimization==1.2.0
