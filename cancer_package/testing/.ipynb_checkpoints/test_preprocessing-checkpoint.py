@@ -1,6 +1,8 @@
+import numpy as np
 import pandas as pd
 
 from cancer_package.preprocessing import BasicPreprocessing
+from cancer_package import constants
 
 
 mock_data = pd.DataFrame(
@@ -53,17 +55,37 @@ def test_rm_with_groups_low_threshold():
     )
 
 
-def test_rm_energy_proteins():
+def test_rm_high_threshold():
     data_prep = BasicPreprocessing(mock_data, -1)
-    data_prep.rm_energy_proteins(["A"])
-    assert data_prep.proteins == ["B", "C"]
+    data_prep.rm_execess_nans(.99, by_group=False)
+    assert data_prep.proteins == []
     pd.testing.assert_frame_equal(
         data_prep.data,
-        mock_data[["patient_id", "category", "B", "C"]]
+        mock_data[["patient_id", "category"]]
     )
 
 
-def test_organise_proteins():
+def test_rm_low_threshold():
+    data_prep = BasicPreprocessing(mock_data, -1)
+    data_prep.rm_execess_nans(.6, by_group=False)
+    assert data_prep.proteins == ["A"]
+    pd.testing.assert_frame_equal(
+        data_prep.data,
+        mock_data[["patient_id", "category", "A"]]
+    )
+
+
+def test_rm_energy_proteins():
+    mock_data2 = mock_data.rename(columns={"A": 'CAT'})
+    data_prep = BasicPreprocessing(mock_data2, -1, use_energy_proteins=False)
+    assert data_prep.proteins == ["B", "C"]
+    pd.testing.assert_frame_equal(
+        data_prep.data,
+        mock_data2[["patient_id", "category", "B", "C"]]
+    )
+
+
+def test_organise_proteins_all_present():
     data_prep = BasicPreprocessing(mock_data, -1)
     protein_group = pd.DataFrame({"Protein": ["B", "C", "A"]})
     data_prep.organise_proteins(protein_group)
@@ -72,3 +94,18 @@ def test_organise_proteins():
         data_prep.data,
         mock_data[["patient_id", "category", "B", "C", "A"]]
     )
+
+
+def test_organise_proteins_with_missing():
+    mock_data2 = mock_data.copy()
+    mock_data2["D"] = np.arange(len(mock_data2))
+    data_prep = BasicPreprocessing(mock_data2, -1)
+    protein_group = pd.DataFrame({"Protein": ["C", "B"]})
+    data_prep.organise_proteins(protein_group)
+    assert data_prep.proteins == ["C", "B", "A", "D"]
+    pd.testing.assert_frame_equal(
+        data_prep.data,
+        mock_data2[["patient_id", "category", "C", "B", "A", "D"]]
+    )
+
+

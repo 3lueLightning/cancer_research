@@ -1,0 +1,50 @@
+﻿Protein,Group
+HSP90AA1,HSP90 network
+HSP90AB1,HSP90 network
+HSP90B1,HSP90 network
+TRAP1,HSP90 network
+FKBP4,HSP90 network
+HSPA2,HSP70 network
+HSPA5,HSP70 network
+HSPA6,HSP70 network
+HSPA8,HSP70 network
+HSPA9,HSP70 network
+HSPA12A,HSP70 network
+DNAJA1,HSP70 network
+DNAJA2,HSP70 network
+DNAJC5,HSP70 network
+DNAJC11,HSP70 network
+STIP1,HSP70 network
+ST13,HSP70 network
+HSPA4,HSP70 network
+HSPD1,HSP60 
+HSPB1,HSPB 
+HSPB4,HSPB 
+HSPB5,HSPB 
+CCT1,Chaperonins
+CCT2,Chaperonins
+CCT3,Chaperonins
+CCT4,Chaperonins
+CCT5,Chaperonins
+CCT6A,Chaperonins
+CCT7,Chaperonins
+CCT8,Chaperonins
+SOD1,Redox regulation
+SOD2,Redox regulation
+SOD3,Redox regulation
+CAT,Redox regulation
+GGT1,Redox regulation
+GSR,Redox regulation
+GSS,Redox regulation
+GSTA2,Redox regulation
+GSTK1,Redox regulation
+GSTM2,Redox regulation
+GSTM3,Redox regulation
+GSTO1,Redox regulation
+GSTP1,Redox regulation
+MGST1,Redox regulation
+MGST3,Redox regulation
+SDHA,Warburg effect
+SDHB,Warburg effect
+FBP1,Warburg effect
+SRC,Warburg effect

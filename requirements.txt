@@ -1,4 +1,6 @@
 scipy==1.8.1
+# scikit-learn==0.23 does not work with bayes_opt
+scikit-learn==0.22
 pytest
 shap==0.2.0.1
 xgboost==1.2.1

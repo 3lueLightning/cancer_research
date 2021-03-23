@@ -1,0 +1,4 @@
+name,numerator,denominator,calculate,comment
+f1,A,C,1,
+f2,A x B,,1,
+f3,A + C,B + C,1,

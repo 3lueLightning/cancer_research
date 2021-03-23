@@ -8,6 +8,7 @@ from typing import List, Type, Optional
 from typeguard import typechecked
 from sklearn.base import clone
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import cross_val_predict, StratifiedKFold
 from sklearn.metrics import (balanced_accuracy_score,
                              accuracy_score,
@@ -159,38 +160,33 @@ def plot_protein_heatmap(
     
     if group_proteins:
         cols = protein_group.Protein[ protein_group.Protein.isin(proteins)]
+        cols = pd.concat([cols, proteins[~proteins.isin(cols)]])
     else:
         cols = proteins
-        
-    ss_data = StandardScaler().fit_transform(data[cols])
+    
+    ss_data = data.sort_values("category")
+    category = ss_data["category"]
+    ss_data = StandardScaler().fit_transform(ss_data[cols])
     ss_data = pd.DataFrame(ss_data, columns=cols)
     
-    ss_data["category"] = data["category"].astype("category")
-    if category_mapping:
-        sorter = list(category_mapping.values())
-        category_encoder = MapCategories( category_mapping)
-        encoded_categories = category_encoder.fit_transform( data.category)
-        ss_data["category"] = category_encoder.inverse_transform( encoded_categories)
-        ss_data["category"].cat.set_categories(sorter, inplace=True)
-    ss_data.sort_values("category", inplace=True)
-    
-    total_deviation = (ss_data[cols] - ss_data[cols].min()).sum(axis="columns").rename("dev")
-    ss_data = pd.concat([ss_data, total_deviation], 1).sort_values(["category", "dev"])[ss_data.columns]
+    total_deviation = ss_data.abs().sum(axis="columns").rename("dev")
+    ss_data = pd.concat([ss_data, category, total_deviation], 1).sort_values(["category", "dev"])
+    category = ss_data["category"]
+    ss_data = ss_data[cols]
 
     fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-    dev_by_category = pd.concat([total_deviation, ss_data.category], 1)
+    dev_by_category = pd.concat([total_deviation, category], 1)
     sns.boxplot(data=dev_by_category, x="dev", y="category")
     ax.axvline(dev_by_category[dev_by_category.category == "CTL"].dev.median())
     plt.xlabel("sum deviations from the minimum")
     plt.show()
 
     fig, ax = plt.subplots(1, 1, figsize=(30,20))
-    ss_data = ss_data[cols]
     if feature_mapping:
         ss_data.rename(columns=feature_mapping, inplace=True)
     thresh = np.quantile(ss_data.values.reshape(-1), q=.98)
-    hm = sns.heatmap( ss_data[cols], vmax=thresh, cmap="YlGnBu", yticklabels=[])
-    for _, (category, val) in ss_data.category.value_counts(sort=False).cumsum().reset_index().iterrows():
+    hm = sns.heatmap( ss_data, vmax=thresh, cmap="YlGnBu", yticklabels=[])
+    for _, (category, val) in category.value_counts(sort=False).cumsum().reset_index().iterrows():
         if val < len(ss_data):
             ax.axhline(val, ls='-', color="black", linewidth=3)
         ax.text(48, val - 5, category, fontsize=15)
