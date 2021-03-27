@@ -14,7 +14,7 @@ from bayes_opt.event import Events
 from typing import Optional, List, Dict, Union, Any
 from sklearn.base import clone
 from sklearn.utils import shuffle
-from sklearn.feature_selection import SelectFromModel
+from sklearn.feature_selection import RFECV, SelectFromModel
 from sklearn.model_selection import GridSearchCV, cross_val_score
 
 
@@ -45,11 +45,12 @@ class PipelineTuner():
         #
         self.feature_names = self.original_X_train.columns
         self.n_features = len(self.feature_names)
+        self.continue_fs = True
         self.fs_pipes = pd.Series([], dtype=object)
         self.fs_scores = pd.Series([], dtype=float)
         self.fs_features = pd.Series([], dtype=object)
         self.offset = 0
-        self.max_score = -np.inf
+        self.best_score = -np.inf
         #
         self.bayes_n_iter = None
         self.bayes_init_points = None
@@ -67,7 +68,7 @@ class PipelineTuner():
         self.feature_names = previous_tuning["fs_features"].iloc[-1]
         self.n_features = len(self.feature_names)
         self.offset = len(self.fs_pipes)
-        self.max_score = self.fs_scores.max()
+        self.best_score = self.fs_scores.max()
         
     
     def bayes_config(
@@ -86,50 +87,84 @@ class PipelineTuner():
         print(f"model save in: {sub_dir}")
         self.save_dir = os.path.join(path, sub_dir)
         os.mkdir(self.save_dir)
+
+    
+    def _rfecv_feature_selection(self):
+        if self.fs_pipes.empty:
+            n_features = self.n_features
+            selected_cols = self.feature_names
+        else:
+            feature_names = self.fs_features.iloc[-1]
+            # we place the feature elimination in a loop because there is
+            # no garantee that a feature will be removed given the set
+            # min_features_to_select. So we might have to make additional
+            # iterations until a feature is removed.
+            #
+            # note: list(reversed(range(1,4))) == [3, 2, 1]
+            for n_features in reversed(range(self.n_features)):
+                print(f"try removing {self.n_features - n_features} features")
+                selector = RFECV(
+                    clone(self.fs_pipes.iloc[-1]["model"]),
+                    step=1,
+                    cv=self.cv,
+                    min_features_to_select=n_features
+                )
+                selector = selector.fit(
+                    self.original_X_train[feature_names],
+                    self.y_train
+                )
+                if selector.support_.sum() == n_features:
+                    selected_cols = feature_names[selector.support_]
+                    print(f"{self.n_features - n_features} features removed")
+                    break
+                elif n_features == 1:
+                    print("couldn't remove more features")
+                    self.continue_fs = False
+                    break
+        
+        if self.continue_fs:
+            self.n_features = n_features
+            self.fs_features = self.fs_features.append(
+                pd.Series([np.array(selected_cols)], index=[n_features])
+            )
     
     
     def _feature_selection(self):
-        """
-        to be removed
-        """
         if self.fs_pipes.empty:
             n_features = self.n_features
             selected_cols = self.feature_names
         else:
-            n_features = self.n_features - 1
-            selector = SelectFromModel(
-                estimator=self.fs_pipes.iloc[-1]["model"],
-                threshold=-np.inf,
-                max_features=n_features,
-                prefit=True
+            feature_names = self.fs_features.iloc[-1]
+            X_train = self.original_X_train[feature_names]
+            importance_cv = []
+            for train_index, _ in self.cv.split(X_train, self.y_train):
+                importance = clone(
+                    self.fs_pipes.iloc[-1]["model"]
+                ).fit(X_train, self.y_train).feature_importances_ 
+                importance_cv.append(importance)
+            mean_importance_cv = np.array(importance_cv).mean(0)
+            importance_mask = mean_importance_cv > mean_importance_cv.min()
+            n_features = importance_mask.sum()
+            selected_cols = feature_names[importance_mask]
+            #print("-- feature importances")
+            #display(pd.DataFrame({"features":feature_names, "imp": mean_importance_cv}).sort_values("imp", ascending=False))
+            #print("-- rm features")
+            print(f"-- rm {len(importance_mask) - n_features} features")
+            display(feature_names[~importance_mask])
+            if n_features <= 1:
+                print("couldn't remove more features")
+                self.continue_fs = False
+            elif importance_mask.all():
+                print("\n\nall features were deemed important\n\n")
+                self.continue_fs = False
+                
+
+        if self.continue_fs:
+            self.n_features = n_features
+            self.fs_features = self.fs_features.append(
+                pd.Series([np.array(selected_cols)], index=[n_features])
             )
-            selected_cols = self.fs_features.iloc[-1][selector.get_support()]
         
-        self.n_features = n_features
-        self.fs_features = self.fs_features.append(
-            pd.Series([np.array(selected_cols)], index=[n_features])
-        )
-    
-    
-    def _new_feature_selection(self):
-        if self.fs_pipes.empty:
-            n_features = self.n_features
-            selected_cols = self.feature_names
-        else:
-            for n_features in reversed(range(self.n_features)):
-                selector = RFECV(
-                    self.fs_pipes.iloc[-1]["model"],
-                    step=1,
-                    cv=self.cv,
-                    min_features_to_select=n_features)
-                selector = selector.fit(X, y)
-                print(selector.support_)
-                if selector.support_.sum() == i:
-                    print("broke")
-                    break
-                else:
-                    print("continue")
-    
     
     def _discretize_params(self, params):
         params = {
@@ -142,7 +177,6 @@ class PipelineTuner():
     def _bayes_opt_func(self, model_pipe, X_train, **params):
         if self.bayes_discrete_vars is not None:
             params = self._discretize_params(params)
-        print(f"-- bayes func: {params}")
         cv_score = cross_val_score(
             model_pipe.set_params(**params),
             X_train,
@@ -176,7 +210,7 @@ class PipelineTuner():
                 f=partial(self._bayes_opt_func, model_pipe=pipe, X_train=X_train),
                 pbounds=self.hyper_params,
                 random_state=9,
-                verbose=1
+                #verbose=1
             )
             if self.save_dir:
                 log_fn = os.path.join(self.save_dir, f"{self.n_features}_features_log.json")
@@ -184,7 +218,7 @@ class PipelineTuner():
                 optimizer.subscribe(Events.OPTIMIZATION_STEP, logger)
             
             # probing all hyper-parameters that were optimal in previous steps
-            if not self.fs_pipes.empty:
+            if not self.fs_pipes.empty: 
                 for previous_pipe in self.fs_pipes:
                     previous_params = previous_pipe["model"].get_params()
                     previous_params = {
@@ -215,10 +249,10 @@ class PipelineTuner():
         )
         
     
-    def _update_max_score(self):
-        if self.fs_scores.iloc[-1] >= self.max_score:
-            self.max_score = self.fs_scores.iloc[-1]
-            print(f'best score so far, model:\n {self.fs_pipes.iloc[-1]}')
+    def _update_best_score(self):
+        if self.fs_scores.iloc[-1] >= self.best_score:
+            self.best_score = self.fs_scores.iloc[-1]
+            print(f'best score so far, model:\n {self.fs_pipes.iloc[-1]["model"].get_params()}')
     
     
     def _save_tuning_iter(self):
@@ -237,8 +271,10 @@ class PipelineTuner():
             ts_step = time()
             
             self._feature_selection()
+            if self.continue_fs == False:
+                break
             self._param_optimization()
-            self._update_max_score()
+            self._update_best_score()
             self._save_tuning_iter()
             
             enough_iters = len(self.fs_scores) > self.offset + self.patience
@@ -258,3 +294,53 @@ class PipelineTuner():
         ax.set_xlim(self.fs_pipes.index.max(), self.fs_pipes.index.min())
         self.fs_scores.plot.line()
         plt.show()
+
+     
+############################# OLD CODE
+"""
+def _feature_selection(self):
+    if self.fs_pipes.empty:
+        n_features = self.n_features
+        selected_cols = self.feature_names
+    else:
+        n_features = self.n_features - 1
+        selector = SelectFromModel(
+            estimator=self.fs_pipes.iloc[-1]["model"],
+            threshold=-np.inf,
+            max_features=n_features,
+            prefit=True
+        )
+        selected_cols = self.fs_features.iloc[-1][selector.get_support()]
+
+    self.n_features = n_features
+    self.fs_features = self.fs_features.append(
+        pd.Series([np.array(selected_cols)], index=[n_features])
+    )
+    
+
+def _cv_feature_selection(self):
+    if self.fs_pipes.empty:
+        n_features = self.n_features
+        selected_cols = self.feature_names
+    else:
+        feature_names = self.fs_features.iloc[-1]
+        X_train = self.original_X_train[feature_names]
+        importance_cv = []
+        for train_index, _ in self.cv.split(X_train, self.y_train):
+            n_features = self.n_features - 1
+            importance = clone(
+                self.fs_pipes.iloc[-1]["model"]
+            ).fit(X_train, self.y_train).feature_importances_ 
+            importance_cv.append(importance)
+        import pdb
+        pdb.set_trace()
+        agg_importance_cv = np.array(importance_cv).sum(0)
+        importance_mask = agg_importance_cv > agg_importance_cv.min()
+        print(f"-- rm {(len(importance_mask) - importance_mask.sum()) / len(importance_mask)} features")
+        selected_cols = feature_names[importance_mask]
+
+    self.n_features = n_features
+    self.fs_features = self.fs_features.append(
+        pd.Series([np.array(selected_cols)], index=[n_features])
+    )
+"""
