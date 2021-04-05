@@ -20,8 +20,12 @@ from sklearn.metrics import (balanced_accuracy_score,
 @typechecked
 def plot_confusion(confusion: np.array, category_names: List[str]):
     fig, ax = plt.subplots(figsize=(9, 8))
-    sns.heatmap(confusion, cmap='Blues', annot=True, 
-        xticklabels=category_names, yticklabels=category_names)
+    sns.heatmap(
+        confusion,
+        cmap='Blues',
+        annot=True, 
+        xticklabels=category_names,
+        yticklabels=category_names)
     ax.set_xlabel('prediction')
     ax.set_ylabel('real value')
     plt.show()
@@ -88,8 +92,11 @@ def report_maker(
       category_names
     )
 
-    creport = classification_report(y_train, y_train_cv, 
-                                  target_names=category_names)
+    creport = classification_report(
+        y_train,
+        y_train_cv,
+        target_names=category_names
+    )
     print(creport)
 
     if categories is not None:

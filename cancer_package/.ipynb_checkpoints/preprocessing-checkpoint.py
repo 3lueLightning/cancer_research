@@ -175,7 +175,7 @@ class BasicPreprocessing():
             return numerator + " / " + denominator
     
     
-    def _bio_feature_equations(self, formulas_df: pd.DataFrame):
+    def bio_feature_equations(self, formulas_df: pd.DataFrame):
         """
         It generates a dictionary of biological equations starting from a formulas dataframe.
         :param formulas_df: a df of formulas
@@ -202,7 +202,7 @@ class BasicPreprocessing():
         
     
     def bio_features(self, formulas_df: pd.DataFrame):
-        self._bio_feature_equations(formulas_df)
+        self.bio_feature_equations(formulas_df)
         feature_formulas = (self.formulas_df.name + " = " + self.formulas_df.equation).str.cat(sep="\n")
         self.data = self.data.eval(feature_formulas)
     
